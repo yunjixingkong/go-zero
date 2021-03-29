@@ -7,21 +7,27 @@ import (
 	"google.golang.org/grpc/resolver"
 )
 
-type discovBuilder struct{}
+type discovBuilder struct{
+	sub *discov.Subscriber
+}
 
 func (d *discovBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (
 	resolver.Resolver, error) {
 	hosts := strings.FieldsFunc(target.Authority, func(r rune) bool {
 		return r == EndpointSepChar
 	})
-	sub, err := discov.NewSubscriber(hosts, target.Endpoint)
-	if err != nil {
-		return nil, err
+	if d.sub == nil {
+		sub, err := discov.NewSubscriber(hosts, target.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+		d.sub = sub
 	}
+
 
 	update := func() {
 		var addrs []resolver.Address
-		for _, val := range subset(sub.Values(), subsetSize) {
+		for _, val := range subset(d.sub.Values(), subsetSize) {
 			addrs = append(addrs, resolver.Address{
 				Addr: val,
 			})
@@ -30,7 +36,7 @@ func (d *discovBuilder) Build(target resolver.Target, cc resolver.ClientConn, op
 			Addresses: addrs,
 		})
 	}
-	sub.AddListener(update)
+	d.sub.AddListener(update)
 	update()
 
 	return &nopResolver{cc: cc}, nil
